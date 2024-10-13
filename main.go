@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"github.com/manifoldco/promptui"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -17,6 +18,13 @@ func main() {
 
 	fileName := flag.String("name", "nil", "name of searching file")
 	flag.Parse()
+
+	if *fileName == "nil" {
+		flag.Usage()
+		fmt.Println("**Exit program**")
+		os.Exit(0)
+	}
+
 	fmt.Println("File name to search", *fileName)
 	fmt.Println("Searching...")
 
@@ -32,26 +40,41 @@ func main() {
 		close(pathFoundFile)
 	}()
 
-	foundFile, open := <-pathFoundFile
+	foundFiles := []string{}
+	for str := range pathFoundFile {
+		name := filepath.Base(str)
+		foundFiles = append(foundFiles, fmt.Sprintf("%s path -> %s", name, str))
+	}
 	timeDuration := time.Since(startDate)
-	if !open {
+
+	if len(foundFiles) == 0 {
 		fmt.Println("Not found file")
-	} else {
-		fmt.Println("Found file:", foundFile)
-
-		var openToEx string
-		fmt.Print("Open to file explorer (si/no) ->")
-		fmt.Scanf("%s", &openToEx)
-
-		if strings.ToLower(openToEx) == "si" {
-			fmt.Println("Opening file...")
-			cmd := exec.Command("explorer", foundFile)
-			cmd.CombinedOutput()
-		}
+		fmt.Println("**Exit program**")
+		os.Exit(0)
 	}
 
-	fmt.Println("**Exit program**")
+	////test nomas
+	//Map(foundFiles, func(srt string) string {
+	//	return strings.Split(srt, "::")[0]
+	//})
+
+	selectUi := promptui.Select{
+		Label: "Select one file for open with file explorer",
+		Items: foundFiles,
+	}
+
+	_, selected, err := selectUi.Run()
+	if err != nil {
+		fmt.Println("Invalid selection")
+	}
+
+	fileIndex := slices.Index(foundFiles, selected)
+
+	fmt.Println("Opening file...")
+	exec.Command("explorer", strings.Split(foundFiles[fileIndex], " path -> ")[1]).CombinedOutput()
+
 	fmt.Printf("Exec time: %v\n", timeDuration)
+	fmt.Println("**Exit program**")
 }
 
 func searchFile(path, findFile string, c chan string, wg *sync.WaitGroup) {
@@ -64,7 +87,7 @@ func searchFile(path, findFile string, c chan string, wg *sync.WaitGroup) {
 			continue
 		}
 
-		if strings.Contains(file.Name(), findFile) {
+		if strings.Contains(strings.ToLower(file.Name()), strings.ToLower(findFile)) {
 			c <- filepath.Join(path, file.Name())
 		}
 
